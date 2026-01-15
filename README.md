@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="img/goflow.svg" alt="GoFlow Banner" width="600">
+  <img src="img/goflow.png" alt="GoFlow Banner" width="600">
 </p>
 
 <p align="center">
