@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="img/goflow.webp" alt="GoFlow Banner" width="400" style="border: 1px solid #ccc; border-radius: 8px;">
+  <img src="img/goflow.png" alt="GoFlow Banner" width="600">
 </p>
 
 <p align="center">
