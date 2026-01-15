@@ -175,7 +175,7 @@ Analyze and trace Go code execution.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Found a bug? Want to add a new feature? Have an idea to make GoFlow even cooler? PRs are always welcome! Just fork it, hack it, and send it over.
 
 ## License
 
