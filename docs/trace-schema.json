@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GoFlow Execution Trace Schema",
+  "description": "Schema for Go code execution trace data",
+  
+  "definitions": {
+    "Variable": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Variable name" },
+        "type": { "type": "string", "description": "Go type (int, string, []int, etc.)" },
+        "value": { "description": "Current value (any JSON-serializable type)" },
+        "scope": { "type": "string", "description": "Scope identifier (main, for_1, for_2, etc.)" }
+      },
+      "required": ["name", "type", "value", "scope"]
+    },
+    
+    "TraceStep": {
+      "type": "object",
+      "properties": {
+        "stepIndex": { "type": "integer", "description": "Sequential step number (0-based)" },
+        "line": { "type": "integer", "description": "Line number in source code (1-based)" },
+        "column": { "type": "integer", "description": "Column position (1-based)" },
+        "statement": { "type": "string", "description": "The actual code statement" },
+        "statementType": { 
+          "type": "string",
+          "enum": ["assign", "declare", "for_init", "for_cond", "for_post", "if_cond", "if_body", "else_body", "call", "return", "break", "continue"],
+          "description": "Type of statement being executed"
+        },
+        "variables": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Variable" },
+          "description": "Snapshot of all variables at this step"
+        },
+        "scopeStack": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Current scope stack (e.g., ['main', 'for_1', 'for_2'])"
+        },
+        "output": {
+          "type": "string",
+          "description": "Any console output produced at this step"
+        },
+        "loopIteration": {
+          "type": "object",
+          "properties": {
+            "loopId": { "type": "string" },
+            "iteration": { "type": "integer" }
+          },
+          "description": "Current loop iteration info (if inside a loop)"
+        }
+      },
+      "required": ["stepIndex", "line", "statement", "statementType", "variables", "scopeStack"]
+    },
+    
+    "ASTNode": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique node identifier" },
+        "type": { 
+          "type": "string",
+          "enum": ["function", "for", "if", "else", "statement", "block"],
+          "description": "Node type for visualization"
+        },
+        "label": { "type": "string", "description": "Display label" },
+        "startLine": { "type": "integer" },
+        "endLine": { "type": "integer" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ASTNode" }
+        },
+        "parentId": { "type": "string", "nullable": true }
+      },
+      "required": ["id", "type", "label", "startLine", "endLine"]
+    }
+  },
+  
+  "type": "object",
+  "properties": {
+    "success": { "type": "boolean" },
+    "error": { "type": "string", "nullable": true },
+    
+    "sourceCode": { "type": "string", "description": "Original source code" },
+    "totalSteps": { "type": "integer", "description": "Total number of execution steps" },
+    
+    "ast": {
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ASTNode" },
+          "description": "Hierarchical AST nodes for visualization"
+        }
+      }
+    },
+    
+    "trace": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/TraceStep" },
+      "description": "Array of execution steps"
+    },
+    
+    "finalOutput": {
+      "type": "string",
+      "description": "Complete console output"
+    }
+  },
+  "required": ["success", "sourceCode", "totalSteps", "ast", "trace"]
+}
