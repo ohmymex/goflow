@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import { Variable } from '@/types/trace';
 
 interface VariableTrackerProps {
@@ -20,6 +20,18 @@ export function VariableTracker({ variables, previousVariables = [] }: VariableT
     }
     return changed;
   }, [variables, previousVariables]);
+
+  // Group variables by scope (function name) — must be before early return (Rules of Hooks)
+  const groupedVars = useMemo(() => {
+    const groups: Record<string, Variable[]> = {};
+    for (const v of variables) {
+      // Extract function name from scope (e.g., "main.for_1" -> "main")
+      const funcName = v.scope.split('.')[0] || 'main';
+      if (!groups[funcName]) groups[funcName] = [];
+      groups[funcName].push(v);
+    }
+    return groups;
+  }, [variables]);
 
   if (variables.length === 0) {
     return (
@@ -50,6 +62,9 @@ export function VariableTracker({ variables, previousVariables = [] }: VariableT
     );
   }
 
+  const scopeNames = Object.keys(groupedVars);
+  const hasMultipleScopes = scopeNames.length > 1;
+
   return (
     <div className="h-full overflow-auto p-2">
       <table className="table table-sm w-full">
@@ -61,37 +76,53 @@ export function VariableTracker({ variables, previousVariables = [] }: VariableT
           </tr>
         </thead>
         <tbody>
-          {variables.map((variable) => {
-            const hasChanged = changedVars.has(variable.name);
-            return (
-              <tr
-                key={variable.name}
-                className={`
-                  border-base-300 transition-all duration-300
-                  ${hasChanged ? 'bg-warning/20' : ''}
-                `}
-              >
-                <td className="font-mono font-semibold">
-                  <span className={hasChanged ? 'text-warning' : ''}>
-                    {variable.name}
-                  </span>
-                </td>
-                <td className="text-base-content/60 font-mono text-xs">
-                  {variable.type}
-                </td>
-                <td className="font-mono">
-                  <span
+          {scopeNames.map((scopeName) => (
+            <Fragment key={scopeName}>
+              {hasMultipleScopes && (
+                <tr className="border-base-300">
+                  <td colSpan={3} className="bg-base-300/50 py-1 px-2">
+                    <span className="text-xs font-semibold text-primary flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                      </svg>
+                      {scopeName}()
+                    </span>
+                  </td>
+                </tr>
+              )}
+              {groupedVars[scopeName].map((variable) => {
+                const hasChanged = changedVars.has(variable.name);
+                return (
+                  <tr
+                    key={`${scopeName}-${variable.name}`}
                     className={`
-                      inline-block px-2 py-0.5 rounded
-                      ${hasChanged ? 'bg-warning text-warning-content animate-pulse' : 'bg-base-200'}
+                      border-base-300 transition-all duration-300
+                      ${hasChanged ? 'bg-warning/20' : ''}
                     `}
                   >
-                    {formatValue(variable.value)}
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
+                    <td className="font-mono font-semibold">
+                      <span className={hasChanged ? 'text-warning' : ''}>
+                        {variable.name}
+                      </span>
+                    </td>
+                    <td className="text-base-content/60 font-mono text-xs">
+                      {variable.type}
+                    </td>
+                    <td className="font-mono">
+                      <span
+                        className={`
+                          inline-block px-2 py-0.5 rounded
+                          ${hasChanged ? 'bg-warning text-warning-content animate-pulse' : 'bg-base-200'}
+                        `}
+                      >
+                        {formatValue(variable.value)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </Fragment>
+          ))}
         </tbody>
       </table>
     </div>

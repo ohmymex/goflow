@@ -12,6 +12,16 @@ import (
 	"github.com/goflow/visualizer/internal/tracer"
 )
 
+// CallFrame represents a function call on the call stack
+type CallFrame struct {
+	FuncName       string
+	SavedVars      map[string]interface{}
+	SavedTypes     map[string]string
+	SavedScope     []string
+	SavedReturned  bool
+	SavedReturnVal interface{}
+}
+
 // ExecuteSimple executes Go code by parsing the AST and simulating execution
 // This approach gives us full control over variable tracking and step generation
 func ExecuteSimple(code string) ([]tracer.Step, string, error) {
@@ -31,6 +41,16 @@ func ExecuteSimple(code string) ([]tracer.Step, string, error) {
 		stepIndex:      0,
 		loopIterations: make(map[string]int),
 		loopCounter:    0,
+		functions:      make(map[string]*ast.FuncDecl),
+		callStack:      []CallFrame{{FuncName: "main"}},
+		maxCallDepth:   50,
+	}
+
+	// Pre-scan: register all function declarations
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name != "main" {
+			executor.functions[fn.Name.Name] = fn
+		}
 	}
 
 	// Find and execute main function
@@ -55,10 +75,18 @@ type simpleExecutor struct {
 	stepIndex      int
 	loopIterations map[string]int
 	loopCounter    int
+	functions      map[string]*ast.FuncDecl
+	callStack      []CallFrame
+	maxCallDepth   int
+	returnValue    interface{}
+	hasReturned    bool
 }
 
 func (e *simpleExecutor) executeBlock(stmts []ast.Stmt) {
 	for _, stmt := range stmts {
+		if e.hasReturned {
+			return
+		}
 		e.executeStmt(stmt)
 	}
 }
@@ -153,6 +181,10 @@ func (e *simpleExecutor) executeFor(s *ast.ForStmt) {
 	iteration := 0
 
 	for iteration < maxIterations {
+		if e.hasReturned {
+			break
+		}
+
 		// Check condition
 		if s.Cond != nil {
 			condValue := e.evalExpr(s.Cond)
@@ -173,6 +205,10 @@ func (e *simpleExecutor) executeFor(s *ast.ForStmt) {
 			e.executeBlock(s.Body.List)
 		}
 		e.scopeStack = e.scopeStack[:len(e.scopeStack)-1]
+
+		if e.hasReturned {
+			break
+		}
 
 		// Execute post
 		if s.Post != nil {
@@ -205,8 +241,16 @@ func (e *simpleExecutor) executeExpr(s *ast.ExprStmt) {
 	line := e.fset.Position(s.Pos()).Line
 	var stepOutput string
 
-	// Check for fmt.Print calls
 	if call, ok := s.X.(*ast.CallExpr); ok {
+		// Check for user-defined function call as statement (e.g., myFunc(x))
+		if ident, ok := call.Fun.(*ast.Ident); ok {
+			if _, isUserFunc := e.functions[ident.Name]; isUserFunc {
+				e.executeUserFunc(e.functions[ident.Name], call)
+				return
+			}
+		}
+
+		// Check for fmt.Print calls
 		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
 			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "fmt" {
 				// Evaluate and capture output
@@ -227,7 +271,7 @@ func (e *simpleExecutor) executeExpr(s *ast.ExprStmt) {
 						}
 					}
 				}
-				
+
 				// Add to total output
 				e.output.WriteString(stepOutput)
 			}
@@ -257,7 +301,14 @@ func (e *simpleExecutor) executeIncDec(s *ast.IncDecStmt) {
 
 func (e *simpleExecutor) executeReturn(s *ast.ReturnStmt) {
 	line := e.fset.Position(s.Pos()).Line
-	e.addStep(line, "return", e.getStatementText(s))
+
+	// Evaluate return value if present
+	if len(s.Results) > 0 {
+		e.returnValue = e.evalExpr(s.Results[0])
+	}
+	e.hasReturned = true
+
+	e.addStep(line, "func_return", e.getStatementText(s))
 }
 
 func (e *simpleExecutor) evalExpr(expr ast.Expr) interface{} {
@@ -371,8 +422,13 @@ func (e *simpleExecutor) evalIndexExpr(idx *ast.IndexExpr) interface{} {
 }
 
 func (e *simpleExecutor) evalCallExpr(call *ast.CallExpr) interface{} {
-	// Handle built-in functions
 	if ident, ok := call.Fun.(*ast.Ident); ok {
+		// Check user-defined functions first
+		if fn, ok := e.functions[ident.Name]; ok {
+			return e.executeUserFunc(fn, call)
+		}
+
+		// Handle built-in functions
 		switch ident.Name {
 		case "len":
 			if len(call.Args) > 0 {
@@ -391,6 +447,106 @@ func (e *simpleExecutor) evalCallExpr(call *ast.CallExpr) interface{} {
 		}
 	}
 	return nil
+}
+
+func (e *simpleExecutor) executeUserFunc(fn *ast.FuncDecl, call *ast.CallExpr) interface{} {
+	// Safety: check call depth
+	if len(e.callStack) >= e.maxCallDepth {
+		line := e.fset.Position(call.Pos()).Line
+		e.addStep(line, "func_call", fn.Name.Name+"(...) — max call depth reached")
+		return nil
+	}
+
+	// Evaluate arguments in caller scope
+	args := make([]interface{}, len(call.Args))
+	for i, arg := range call.Args {
+		args[i] = e.evalExpr(arg)
+	}
+
+	// Record func_call step (in caller context)
+	line := e.fset.Position(call.Pos()).Line
+	e.addStep(line, "func_call", fn.Name.Name+"(...)")
+
+	// Save caller state (deep copy to prevent corruption during recursion)
+	savedVars := make(map[string]interface{}, len(e.variables))
+	for k, v := range e.variables {
+		savedVars[k] = v
+	}
+	savedTypes := make(map[string]string, len(e.varTypes))
+	for k, v := range e.varTypes {
+		savedTypes[k] = v
+	}
+	savedScope := make([]string, len(e.scopeStack))
+	copy(savedScope, e.scopeStack)
+
+	frame := CallFrame{
+		FuncName:       fn.Name.Name,
+		SavedVars:      savedVars,
+		SavedTypes:     savedTypes,
+		SavedScope:     savedScope,
+		SavedReturned:  e.hasReturned,
+		SavedReturnVal: e.returnValue,
+	}
+
+	// Push call frame
+	e.callStack = append(e.callStack, frame)
+
+	// Create fresh scope for callee
+	e.variables = make(map[string]interface{})
+	e.varTypes = make(map[string]string)
+	e.scopeStack = []string{fn.Name.Name}
+
+	// Bind parameters
+	if fn.Type.Params != nil {
+		argIdx := 0
+		for _, field := range fn.Type.Params.List {
+			typeName := e.getTypeString(field.Type)
+			for _, name := range field.Names {
+				if argIdx < len(args) {
+					e.variables[name.Name] = args[argIdx]
+					e.varTypes[name.Name] = typeName
+					argIdx++
+				}
+			}
+		}
+	}
+
+	// Record func_enter step (in callee context)
+	if fn.Body != nil {
+		enterLine := e.fset.Position(fn.Body.Pos()).Line
+		e.addStep(enterLine, "func_enter", "enter "+fn.Name.Name)
+	}
+
+	// Execute function body
+	e.hasReturned = false
+	e.returnValue = nil
+	if fn.Body != nil {
+		e.executeBlock(fn.Body.List)
+	}
+
+	// Capture return value
+	result := e.returnValue
+
+	// Pop call frame: restore caller state
+	e.callStack = e.callStack[:len(e.callStack)-1]
+	e.variables = frame.SavedVars
+	e.varTypes = frame.SavedTypes
+	e.scopeStack = frame.SavedScope
+	e.hasReturned = frame.SavedReturned
+	e.returnValue = frame.SavedReturnVal
+
+	return result
+}
+
+func (e *simpleExecutor) getTypeString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.ArrayType:
+		return "[]" + e.getTypeString(t.Elt)
+	default:
+		return "auto"
+	}
 }
 
 func (e *simpleExecutor) evalBinary(left, right interface{}, op token.Token) interface{} {
@@ -449,6 +605,21 @@ func (e *simpleExecutor) addStep(line int, stmtType, statement string) {
 	e.addStepWithOutput(line, stmtType, statement, "")
 }
 
+func (e *simpleExecutor) currentFuncName() string {
+	if len(e.callStack) > 0 {
+		return e.callStack[len(e.callStack)-1].FuncName
+	}
+	return "main"
+}
+
+func (e *simpleExecutor) captureCallStack() []string {
+	stack := make([]string, len(e.callStack))
+	for i, frame := range e.callStack {
+		stack[i] = frame.FuncName
+	}
+	return stack
+}
+
 func (e *simpleExecutor) addStepWithOutput(line int, stmtType, statement, output string) {
 	step := tracer.Step{
 		StepIndex:     e.stepIndex,
@@ -458,6 +629,8 @@ func (e *simpleExecutor) addStepWithOutput(line int, stmtType, statement, output
 		Variables:     e.captureVariables(),
 		ScopeStack:    append([]string{}, e.scopeStack...),
 		Output:        output,
+		CallStack:     e.captureCallStack(),
+		FunctionName:  e.currentFuncName(),
 	}
 	e.steps = append(e.steps, step)
 	e.stepIndex++
@@ -475,6 +648,8 @@ func (e *simpleExecutor) addStepWithLoop(line int, stmtType, statement, loopID s
 			LoopID:    loopID,
 			Iteration: iteration,
 		},
+		CallStack:    e.captureCallStack(),
+		FunctionName: e.currentFuncName(),
 	}
 	e.steps = append(e.steps, step)
 	e.stepIndex++

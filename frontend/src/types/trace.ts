@@ -23,6 +23,8 @@ export interface TraceStep {
   scopeStack: string[];
   output?: string;
   loopIteration?: LoopIteration;
+  callStack?: string[];
+  functionName?: string;
 }
 
 export type StatementType =
@@ -37,12 +39,15 @@ export type StatementType =
   | 'call'
   | 'return'
   | 'break'
-  | 'continue';
+  | 'continue'
+  | 'func_call'
+  | 'func_enter'
+  | 'func_return';
 
 // AST node for visualization
 export interface ASTNode {
   id: string;
-  type: 'function' | 'for' | 'if' | 'else' | 'statement' | 'block';
+  type: 'function' | 'for' | 'if' | 'else' | 'statement' | 'block' | 'func_call';
   label: string;
   startLine: number;
   endLine: number;

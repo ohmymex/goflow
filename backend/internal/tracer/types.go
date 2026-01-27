@@ -25,6 +25,8 @@ type Step struct {
 	ScopeStack    []string       `json:"scopeStack"`
 	Output        string         `json:"output,omitempty"`
 	LoopIteration *LoopIteration `json:"loopIteration,omitempty"`
+	CallStack     []string       `json:"callStack,omitempty"`
+	FunctionName  string         `json:"functionName,omitempty"`
 }
 
 // ASTNode represents a node in the visualization tree

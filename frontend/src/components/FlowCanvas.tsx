@@ -18,6 +18,7 @@ import { ASTNode, TraceStep } from '@/types/trace';
 import { StatementNode } from './nodes/StatementNode';
 import { ForLoopNode } from './nodes/ForLoopNode';
 import { FunctionNode } from './nodes/FunctionNode';
+import { FuncCallNode } from './nodes/FuncCallNode';
 
 interface FlowCanvasProps {
   astNodes: ASTNode[];
@@ -29,6 +30,7 @@ const nodeTypes = {
   statement: StatementNode,
   forLoop: ForLoopNode,
   function: FunctionNode,
+  funcCall: FuncCallNode,
 } as const;
 
 export function FlowCanvas({ astNodes, currentStep, currentLine }: FlowCanvasProps) {
@@ -107,6 +109,7 @@ function convertASTToFlow(
     let nodeType = 'statement';
     if (node.type === 'for') nodeType = 'forLoop';
     if (node.type === 'function') nodeType = 'function';
+    if (node.type === 'func_call') nodeType = 'funcCall';
 
     flowNodes.push({
       id: nodeId,

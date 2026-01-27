@@ -32,7 +32,7 @@ func ParseAST(code string) (*ASTResult, error) {
 			funcNode := &ASTNode{
 				ID:        generateID("func"),
 				Type:      "function",
-				Label:     fmt.Sprintf("func %s()", fn.Name.Name),
+				Label:     getFuncLabel(fset, fn),
 				StartLine: fset.Position(fn.Pos()).Line,
 				EndLine:   fset.Position(fn.End()).Line,
 				Children:  make([]*ASTNode, 0),
@@ -84,9 +84,16 @@ func processStatement(fset *token.FileSet, stmt ast.Stmt, parentID string, gener
 			ParentID:  parentID,
 		}
 	case *ast.ExprStmt:
+		nodeType := "statement"
+		// Detect user-defined function calls (not pkg.Method calls)
+		if call, ok := s.X.(*ast.CallExpr); ok {
+			if _, ok := call.Fun.(*ast.Ident); ok {
+				nodeType = "func_call"
+			}
+		}
 		return &ASTNode{
 			ID:        generateID("expr"),
-			Type:      "statement",
+			Type:      nodeType,
 			Label:     getStatementText(fset, stmt),
 			StartLine: fset.Position(s.Pos()).Line,
 			EndLine:   fset.Position(s.End()).Line,
@@ -175,6 +182,57 @@ func processIfStmt(fset *token.FileSet, s *ast.IfStmt, parentID string, generate
 	}
 
 	return ifNode
+}
+
+func getFuncLabel(fset *token.FileSet, fn *ast.FuncDecl) string {
+	label := "func " + fn.Name.Name + "("
+
+	// Add parameters
+	if fn.Type.Params != nil {
+		var params []string
+		for _, field := range fn.Type.Params.List {
+			typeName := getExprText(field.Type)
+			var names []string
+			for _, name := range field.Names {
+				names = append(names, name.Name)
+			}
+			if len(names) > 0 {
+				params = append(params, strings.Join(names, ", ")+" "+typeName)
+			} else {
+				params = append(params, typeName)
+			}
+		}
+		label += strings.Join(params, ", ")
+	}
+	label += ")"
+
+	// Add return type
+	if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
+		var results []string
+		for _, field := range fn.Type.Results.List {
+			results = append(results, getExprText(field.Type))
+		}
+		if len(results) == 1 {
+			label += " " + results[0]
+		} else {
+			label += " (" + strings.Join(results, ", ") + ")"
+		}
+	}
+
+	return label
+}
+
+func getExprText(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.ArrayType:
+		return "[]" + getExprText(t.Elt)
+	case *ast.StarExpr:
+		return "*" + getExprText(t.X)
+	default:
+		return "?"
+	}
 }
 
 func getForLabel(fset *token.FileSet, s *ast.ForStmt) string {

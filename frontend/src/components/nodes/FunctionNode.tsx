@@ -29,6 +29,8 @@ export const FunctionNode = memo(function FunctionNode({
         }
       `}
     >
+      <Handle type="target" position={Position.Top} className="!bg-accent" />
+
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -38,7 +40,7 @@ export const FunctionNode = memo(function FunctionNode({
         </div>
         <span className="text-xs opacity-60 font-mono">Lines {startLine}-{endLine}</span>
       </div>
-      
+
       <Handle type="source" position={Position.Bottom} className="!bg-accent" />
     </div>
   );

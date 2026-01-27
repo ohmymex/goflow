@@ -232,6 +232,11 @@ export default function Home() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7c-2 0-3 1-3 3z" />
                   </svg>
                   Variable State
+                  {currentTraceStep?.callStack && currentTraceStep.callStack.length > 1 && (
+                    <span className="badge badge-accent badge-sm ml-2" title="Call stack">
+                      {currentTraceStep.callStack.join(' → ')}
+                    </span>
+                  )}
                   {currentTraceStep?.loopIteration && (
                     <span className="badge badge-secondary badge-sm ml-2">
                       {currentTraceStep.loopIteration.loopId} iter #{currentTraceStep.loopIteration.iteration}

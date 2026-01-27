@@ -178,7 +178,7 @@ import "fmt"
 
 func main() {
 	size := 5
-	
+
 	for i := 1; i <= size; i++ {
 		for j := 1; j <= size; j++ {
 			product := i * j
@@ -186,6 +186,59 @@ func main() {
 		}
 		fmt.Println()
 	}
+}
+`,
+  },
+  {
+    id: 'recursive-factorial',
+    name: 'Recursive Factorial',
+    description: 'Calculate factorial using recursive function calls',
+    code: `package main
+
+import "fmt"
+
+func factorial(n int) int {
+	if n <= 1 {
+		return 1
+	}
+	result := n * factorial(n-1)
+	return result
+}
+
+func main() {
+	num := 5
+	result := factorial(num)
+	fmt.Println("Factorial of", num, "is", result)
+}
+`,
+  },
+  {
+    id: 'helper-functions',
+    name: 'Helper Functions',
+    description: 'Program using add and multiply helper functions',
+    code: `package main
+
+import "fmt"
+
+func add(a int, b int) int {
+	sum := a + b
+	return sum
+}
+
+func multiply(a int, b int) int {
+	product := a * b
+	return product
+}
+
+func main() {
+	x := 3
+	y := 4
+	sum := add(x, y)
+	fmt.Println("Sum:", sum)
+	product := multiply(x, y)
+	fmt.Println("Product:", product)
+	combined := add(sum, product)
+	fmt.Println("Combined:", combined)
 }
 `,
   },

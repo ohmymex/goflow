@@ -131,6 +131,7 @@ Currently supports:
 - Variable declarations and assignments
 - `for` loops (including nested)
 - `if`/`else` statements
+- **Function definitions, calls, and return values** (including recursion)
 - `fmt.Print`, `fmt.Println`, `fmt.Printf`
 - Basic arithmetic and comparison operations
 - Integer, string, and boolean types
@@ -163,11 +164,20 @@ Analyze and trace Go code execution.
 
 ## TODO
 
-- [ ] Support for functions and function calls
-- [ ] Support for structs and methods
-- [ ] Support for pointers
-- [ ] Support for maps
-- [ ] Support for channels and goroutines
+### Language Features
+- [x] Functions and function calls (basic: params, return, recursion)
+- [ ] Multiple return values
+- [ ] Closures and variadic functions
+- [ ] `for range` loops
+- [ ] Maps (`make`, indexing, iteration)
+- [ ] `append`, `make`, `new` built-ins
+- [ ] Structs and methods
+- [ ] Pointers
+- [ ] Channels and goroutines
+- [ ] `switch` statements
+- [ ] `break` / `continue`
+
+### Tool Features
 - [ ] Breakpoint functionality
 - [ ] Code sharing via URL
 - [ ] Dark/Light theme toggle
