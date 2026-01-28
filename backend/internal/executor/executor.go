@@ -80,11 +80,13 @@ type simpleExecutor struct {
 	maxCallDepth   int
 	returnValue    interface{}
 	hasReturned    bool
+	hasBroken      bool
+	hasContinued   bool
 }
 
 func (e *simpleExecutor) executeBlock(stmts []ast.Stmt) {
 	for _, stmt := range stmts {
-		if e.hasReturned {
+		if e.hasReturned || e.hasBroken || e.hasContinued {
 			return
 		}
 		e.executeStmt(stmt)
@@ -109,6 +111,10 @@ func (e *simpleExecutor) executeStmt(stmt ast.Stmt) {
 		e.executeIncDec(s)
 	case *ast.ReturnStmt:
 		e.executeReturn(s)
+	case *ast.SwitchStmt:
+		e.executeSwitch(s)
+	case *ast.BranchStmt:
+		e.executeBranch(s)
 	}
 }
 
@@ -222,8 +228,13 @@ func (e *simpleExecutor) executeFor(s *ast.ForStmt) {
 		}
 		e.scopeStack = e.scopeStack[:len(e.scopeStack)-1]
 
-		if e.hasReturned {
+		if e.hasReturned || e.hasBroken {
+			e.hasBroken = false
 			break
+		}
+
+		if e.hasContinued {
+			e.hasContinued = false
 		}
 
 		// Execute post
@@ -270,12 +281,16 @@ func (e *simpleExecutor) executeRange(s *ast.RangeStmt) {
 			e.executeBlock(s.Body.List)
 		}
 		e.scopeStack = e.scopeStack[:len(e.scopeStack)-1]
+
+		if e.hasContinued {
+			e.hasContinued = false
+		}
 	}
 
 	switch c := collection.(type) {
 	case []int:
 		for i, v := range c {
-			if e.hasReturned || iteration >= maxIterations {
+			if e.hasReturned || e.hasBroken || iteration >= maxIterations {
 				break
 			}
 			if keyName != "" {
@@ -290,7 +305,7 @@ func (e *simpleExecutor) executeRange(s *ast.RangeStmt) {
 		}
 	case []string:
 		for i, v := range c {
-			if e.hasReturned || iteration >= maxIterations {
+			if e.hasReturned || e.hasBroken || iteration >= maxIterations {
 				break
 			}
 			if keyName != "" {
@@ -305,7 +320,7 @@ func (e *simpleExecutor) executeRange(s *ast.RangeStmt) {
 		}
 	case []float64:
 		for i, v := range c {
-			if e.hasReturned || iteration >= maxIterations {
+			if e.hasReturned || e.hasBroken || iteration >= maxIterations {
 				break
 			}
 			if keyName != "" {
@@ -320,7 +335,7 @@ func (e *simpleExecutor) executeRange(s *ast.RangeStmt) {
 		}
 	case map[interface{}]interface{}:
 		for k, v := range c {
-			if e.hasReturned || iteration >= maxIterations {
+			if e.hasReturned || e.hasBroken || iteration >= maxIterations {
 				break
 			}
 			if keyName != "" {
@@ -334,6 +349,8 @@ func (e *simpleExecutor) executeRange(s *ast.RangeStmt) {
 			runBody()
 		}
 	}
+
+	e.hasBroken = false
 }
 
 func (e *simpleExecutor) executeIf(s *ast.IfStmt) {
@@ -455,6 +472,99 @@ func (e *simpleExecutor) executeReturn(s *ast.ReturnStmt) {
 	e.hasReturned = true
 
 	e.addStep(line, "func_return", e.getStatementText(s))
+}
+
+func (e *simpleExecutor) executeSwitch(s *ast.SwitchStmt) {
+	line := e.fset.Position(s.Pos()).Line
+
+	// Execute init statement if present (e.g., switch x := val; x { ... })
+	if s.Init != nil {
+		e.executeStmt(s.Init)
+	}
+
+	// Evaluate tag expression
+	var tagValue interface{}
+	if s.Tag != nil {
+		tagValue = e.evalExpr(s.Tag)
+	}
+
+	switchLabel := "switch"
+	if s.Tag != nil {
+		var buf bytes.Buffer
+		printer.Fprint(&buf, e.fset, s.Tag)
+		switchLabel = "switch " + buf.String()
+	}
+	e.addStep(line, "switch_tag", switchLabel)
+
+	// Iterate case clauses
+	matched := false
+	if s.Body != nil {
+		for _, stmt := range s.Body.List {
+			cc, ok := stmt.(*ast.CaseClause)
+			if !ok {
+				continue
+			}
+
+			caseLine := e.fset.Position(cc.Pos()).Line
+
+			if cc.List == nil {
+				// default case — only run if nothing matched yet
+				if !matched {
+					e.addStep(caseLine, "case_match", "default")
+					e.executeBlock(cc.Body)
+					matched = true
+				}
+				continue
+			}
+
+			// Check if any case expression matches the tag
+			caseMatched := false
+			for _, expr := range cc.List {
+				caseVal := e.evalExpr(expr)
+				if s.Tag != nil {
+					// Expression switch: compare tag to case values
+					if tagValue == caseVal {
+						caseMatched = true
+						break
+					}
+				} else {
+					// Bool switch (no tag): case expressions should be bool
+					if b, ok := caseVal.(bool); ok && b {
+						caseMatched = true
+						break
+					}
+				}
+			}
+
+			if caseMatched && !matched {
+				// Build case label from expressions
+				var caseLabel string
+				var parts []string
+				for _, expr := range cc.List {
+					var buf bytes.Buffer
+					printer.Fprint(&buf, e.fset, expr)
+					parts = append(parts, buf.String())
+				}
+				caseLabel = "case " + strings.Join(parts, ", ")
+				e.addStep(caseLine, "case_match", caseLabel)
+				e.executeBlock(cc.Body)
+				matched = true
+			}
+		}
+	}
+}
+
+func (e *simpleExecutor) executeBranch(s *ast.BranchStmt) {
+	line := e.fset.Position(s.Pos()).Line
+
+	switch s.Tok {
+	case token.BREAK:
+		e.hasBroken = true
+		e.addStep(line, "break", "break")
+	case token.CONTINUE:
+		e.hasContinued = true
+		e.addStep(line, "continue", "continue")
+	}
 }
 
 func (e *simpleExecutor) evalExpr(expr ast.Expr) interface{} {

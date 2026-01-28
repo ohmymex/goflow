@@ -107,7 +107,7 @@ function convertASTToFlow(
     const isCurrentLine = node.startLine === currentLine;
 
     let nodeType = 'statement';
-    if (node.type === 'for') nodeType = 'forLoop';
+    if (node.type === 'for' || node.type === 'switch') nodeType = 'forLoop';
     if (node.type === 'function') nodeType = 'function';
     if (node.type === 'func_call') nodeType = 'funcCall';
 

@@ -42,12 +42,14 @@ export type StatementType =
   | 'continue'
   | 'func_call'
   | 'func_enter'
-  | 'func_return';
+  | 'func_return'
+  | 'switch_tag'
+  | 'case_match';
 
 // AST node for visualization
 export interface ASTNode {
   id: string;
-  type: 'function' | 'for' | 'if' | 'else' | 'statement' | 'block' | 'func_call';
+  type: 'function' | 'for' | 'if' | 'else' | 'statement' | 'block' | 'func_call' | 'switch' | 'case';
   label: string;
   startLine: number;
   endLine: number;

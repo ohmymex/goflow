@@ -291,4 +291,83 @@ func main() {
 }
 `,
   },
+  {
+    id: 'switch-grade',
+    name: 'Grade Calculator (Switch)',
+    description: 'Assign letter grades using switch statement',
+    code: `package main
+
+import "fmt"
+
+func main() {
+	score := 85
+	grade := ""
+
+	switch {
+	case score >= 90:
+		grade = "A"
+	case score >= 80:
+		grade = "B"
+	case score >= 70:
+		grade = "C"
+	case score >= 60:
+		grade = "D"
+	default:
+		grade = "F"
+	}
+
+	fmt.Println("Score:", score, "Grade:", grade)
+}
+`,
+  },
+  {
+    id: 'switch-day',
+    name: 'Day Type (Switch)',
+    description: 'Categorize days using expression switch',
+    code: `package main
+
+import "fmt"
+
+func main() {
+	day := 3
+
+	switch day {
+	case 1:
+		fmt.Println("Monday")
+	case 2:
+		fmt.Println("Tuesday")
+	case 3:
+		fmt.Println("Wednesday")
+	case 4:
+		fmt.Println("Thursday")
+	case 5:
+		fmt.Println("Friday")
+	default:
+		fmt.Println("Weekend")
+	}
+}
+`,
+  },
+  {
+    id: 'break-continue',
+    name: 'Break & Continue',
+    description: 'Skip even numbers and stop at 8 using break and continue',
+    code: `package main
+
+import "fmt"
+
+func main() {
+	for i := 1; i <= 10; i++ {
+		if i == 8 {
+			fmt.Println("Stopping at", i)
+			break
+		}
+		if i%2 == 0 {
+			continue
+		}
+		fmt.Println(i)
+	}
+}
+`,
+  },
 ];

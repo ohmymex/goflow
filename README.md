@@ -135,6 +135,8 @@ Currently supports:
 - **Function definitions, calls, and return values** (including recursion)
 - **Maps** — `make`, literals, indexing, `delete`
 - **Slices** — literals, indexing, `append`
+- **`switch` statements** — expression switch and bool switch with `default`
+- **`break` / `continue`** — loop flow control
 - `fmt.Print`, `fmt.Println`, `fmt.Printf`
 - Basic arithmetic and comparison operations
 - Integer, string, boolean, and float types
@@ -176,8 +178,8 @@ Analyze and trace Go code execution.
 - [ ] Structs and methods
 - [ ] Pointers
 - [ ] Channels and goroutines
-- [ ] `switch` statements
-- [ ] `break` / `continue`
+- [x] `switch` statements
+- [x] `break` / `continue`
 
 ### Tool Features
 - [ ] Breakpoint functionality

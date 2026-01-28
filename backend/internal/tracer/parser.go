@@ -119,6 +119,17 @@ func processStatement(fset *token.FileSet, stmt ast.Stmt, parentID string, gener
 			EndLine:   fset.Position(s.End()).Line,
 			ParentID:  parentID,
 		}
+	case *ast.SwitchStmt:
+		return processSwitchStmt(fset, s, parentID, generateID)
+	case *ast.BranchStmt:
+		return &ASTNode{
+			ID:        generateID("branch"),
+			Type:      "statement",
+			Label:     s.Tok.String(),
+			StartLine: fset.Position(s.Pos()).Line,
+			EndLine:   fset.Position(s.End()).Line,
+			ParentID:  parentID,
+		}
 	default:
 		return nil
 	}
@@ -218,6 +229,42 @@ func processIfStmt(fset *token.FileSet, s *ast.IfStmt, parentID string, generate
 	}
 
 	return ifNode
+}
+
+func processSwitchStmt(fset *token.FileSet, s *ast.SwitchStmt, parentID string, generateID func(string) string) *ASTNode {
+	switchNode := &ASTNode{
+		ID:        generateID("switch"),
+		Type:      "switch",
+		Label:     "switch ...",
+		StartLine: fset.Position(s.Pos()).Line,
+		EndLine:   fset.Position(s.End()).Line,
+		ParentID:  parentID,
+		Children:  make([]*ASTNode, 0),
+	}
+
+	if s.Body != nil {
+		for _, stmt := range s.Body.List {
+			if cc, ok := stmt.(*ast.CaseClause); ok {
+				label := "case ..."
+				if cc.List == nil {
+					label = "default"
+				}
+				caseNode := &ASTNode{
+					ID:        generateID("case"),
+					Type:      "case",
+					Label:     label,
+					StartLine: fset.Position(cc.Pos()).Line,
+					EndLine:   fset.Position(cc.End()).Line,
+					ParentID:  switchNode.ID,
+					Children:  make([]*ASTNode, 0),
+				}
+				processBlock(fset, cc.Body, caseNode, generateID)
+				switchNode.Children = append(switchNode.Children, caseNode)
+			}
+		}
+	}
+
+	return switchNode
 }
 
 func getFuncLabel(fset *token.FileSet, fn *ast.FuncDecl) string {
@@ -322,6 +369,10 @@ func getStatementText(fset *token.FileSet, stmt ast.Stmt) string {
 			return ident.Name + "--"
 		}
 		return "inc/dec"
+	case *ast.BranchStmt:
+		return s.Tok.String()
+	case *ast.SwitchStmt:
+		return "switch"
 	default:
 		return "statement"
 	}
