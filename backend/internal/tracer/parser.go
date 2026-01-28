@@ -63,6 +63,8 @@ func processStatement(fset *token.FileSet, stmt ast.Stmt, parentID string, gener
 	switch s := stmt.(type) {
 	case *ast.ForStmt:
 		return processForStmt(fset, s, parentID, generateID)
+	case *ast.RangeStmt:
+		return processRangeStmt(fset, s, parentID, generateID)
 	case *ast.IfStmt:
 		return processIfStmt(fset, s, parentID, generateID)
 	case *ast.AssignStmt:
@@ -139,6 +141,40 @@ func processForStmt(fset *token.FileSet, s *ast.ForStmt, parentID string, genera
 	}
 
 	return forNode
+}
+
+func processRangeStmt(fset *token.FileSet, s *ast.RangeStmt, parentID string, generateID func(string) string) *ASTNode {
+	rangeNode := &ASTNode{
+		ID:        generateID("range"),
+		Type:      "for",
+		Label:     getRangeLabel(fset, s),
+		StartLine: fset.Position(s.Pos()).Line,
+		EndLine:   fset.Position(s.End()).Line,
+		ParentID:  parentID,
+		Children:  make([]*ASTNode, 0),
+	}
+
+	if s.Body != nil {
+		processBlock(fset, s.Body.List, rangeNode, generateID)
+	}
+
+	return rangeNode
+}
+
+func getRangeLabel(fset *token.FileSet, s *ast.RangeStmt) string {
+	label := "for "
+	if s.Key != nil {
+		if ident, ok := s.Key.(*ast.Ident); ok {
+			label += ident.Name
+		}
+	}
+	if s.Value != nil {
+		if ident, ok := s.Value.(*ast.Ident); ok {
+			label += ", " + ident.Name
+		}
+	}
+	label += " := range ..."
+	return label
 }
 
 func processIfStmt(fset *token.FileSet, s *ast.IfStmt, parentID string, generateID func(string) string) *ASTNode {

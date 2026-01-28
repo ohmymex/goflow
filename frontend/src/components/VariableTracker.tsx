@@ -143,7 +143,11 @@ function formatValue(value: unknown): string {
     return `[${value.map(formatValue).join(', ')}]`;
   }
   if (typeof value === 'object') {
-    return JSON.stringify(value);
+    // Format maps as map[key:val key:val]
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return 'map[]';
+    const inner = entries.map(([k, v]) => `${k}:${formatValue(v)}`).join(' ');
+    return `map[${inner}]`;
   }
   return String(value);
 }

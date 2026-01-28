@@ -130,12 +130,14 @@ goflow/
 Currently supports:
 - Variable declarations and assignments
 - `for` loops (including nested)
+- `for range` loops (slices and maps)
 - `if`/`else` statements
 - **Function definitions, calls, and return values** (including recursion)
+- **Maps** — `make`, literals, indexing, `delete`
+- **Slices** — literals, indexing, `append`
 - `fmt.Print`, `fmt.Println`, `fmt.Printf`
 - Basic arithmetic and comparison operations
-- Integer, string, and boolean types
-- Slice literals and indexing
+- Integer, string, boolean, and float types
 
 ## API
 
@@ -166,11 +168,11 @@ Analyze and trace Go code execution.
 
 ### Language Features
 - [x] Functions and function calls (basic: params, return, recursion)
+- [x] `for range` loops (slices and maps)
+- [x] Maps (`make`, literals, indexing, `delete`)
+- [x] `append` built-in for slices
 - [ ] Multiple return values
 - [ ] Closures and variadic functions
-- [ ] `for range` loops
-- [ ] Maps (`make`, indexing, iteration)
-- [ ] `append`, `make`, `new` built-ins
 - [ ] Structs and methods
 - [ ] Pointers
 - [ ] Channels and goroutines

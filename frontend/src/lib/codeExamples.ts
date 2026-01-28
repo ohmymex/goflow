@@ -242,4 +242,53 @@ func main() {
 }
 `,
   },
+  {
+    id: 'word-frequency',
+    name: 'Word Frequency (Map)',
+    description: 'Count frequency of numbers using maps and range',
+    code: `package main
+
+import "fmt"
+
+func main() {
+	data := []int{3, 1, 4, 1, 5, 9, 2, 6, 5, 3}
+	counts := make(map[int]int)
+
+	for _, v := range data {
+		counts[v]++
+	}
+
+	fmt.Println("Counts:", counts)
+
+	for key, val := range counts {
+		if val > 1 {
+			fmt.Println(key, "appears", val, "times")
+		}
+	}
+}
+`,
+  },
+  {
+    id: 'slice-operations',
+    name: 'Slice Operations',
+    description: 'Build a slice using append and iterate with range',
+    code: `package main
+
+import "fmt"
+
+func main() {
+	nums := []int{10, 20, 30}
+	nums = append(nums, 40)
+	nums = append(nums, 50)
+
+	sum := 0
+	for i, v := range nums {
+		fmt.Println("Index:", i, "Value:", v)
+		sum = sum + v
+	}
+
+	fmt.Println("Total:", sum)
+}
+`,
+  },
 ];

@@ -99,6 +99,8 @@ func (e *simpleExecutor) executeStmt(stmt ast.Stmt) {
 		e.executeDecl(s)
 	case *ast.ForStmt:
 		e.executeFor(s)
+	case *ast.RangeStmt:
+		e.executeRange(s)
 	case *ast.IfStmt:
 		e.executeIf(s)
 	case *ast.ExprStmt:
@@ -124,9 +126,14 @@ func (e *simpleExecutor) executeAssign(s *ast.AssignStmt) {
 				e.variables[target.Name] = value
 				e.varTypes[target.Name] = fmt.Sprintf("%T", value)
 			case *ast.IndexExpr:
-				// Slice/array index assignment: arr[i] = value
 				if ident, ok := target.X.(*ast.Ident); ok {
-					if arr, ok := e.variables[ident.Name].([]int); ok {
+					// Map index assignment: m[key] = value
+					if m, ok := e.variables[ident.Name].(map[interface{}]interface{}); ok {
+						idx := e.evalExpr(target.Index)
+						m[idx] = value
+						e.variables[ident.Name] = m
+					} else if arr, ok := e.variables[ident.Name].([]int); ok {
+						// Slice index assignment: arr[i] = value
 						idx := e.evalExpr(target.Index)
 						if idxInt, ok := idx.(int); ok && idxInt >= 0 && idxInt < len(arr) {
 							arr[idxInt] = value.(int)
@@ -147,15 +154,24 @@ func (e *simpleExecutor) executeDecl(s *ast.DeclStmt) {
 	if genDecl, ok := s.Decl.(*ast.GenDecl); ok && genDecl.Tok == token.VAR {
 		for _, spec := range genDecl.Specs {
 			if valueSpec, ok := spec.(*ast.ValueSpec); ok {
+				typeName := ""
+				if valueSpec.Type != nil {
+					typeName = e.getTypeString(valueSpec.Type)
+				}
 				for i, name := range valueSpec.Names {
 					var value interface{}
 					if i < len(valueSpec.Values) {
 						value = e.evalExpr(valueSpec.Values[i])
 					} else {
-						value = 0 // Default value
+						// Zero value based on type
+						value = e.zeroValue(typeName)
 					}
 					e.variables[name.Name] = value
-					e.varTypes[name.Name] = fmt.Sprintf("%T", value)
+					if typeName != "" {
+						e.varTypes[name.Name] = typeName
+					} else {
+						e.varTypes[name.Name] = fmt.Sprintf("%T", value)
+					}
 				}
 			}
 		}
@@ -217,6 +233,109 @@ func (e *simpleExecutor) executeFor(s *ast.ForStmt) {
 	}
 }
 
+func (e *simpleExecutor) executeRange(s *ast.RangeStmt) {
+	line := e.fset.Position(s.Pos()).Line
+	e.loopCounter++
+	loopID := fmt.Sprintf("range_%d", e.loopCounter)
+
+	collection := e.evalExpr(s.X)
+
+	// Get key/value variable names (handle _ underscore)
+	keyName := ""
+	valName := ""
+	if s.Key != nil {
+		if ident, ok := s.Key.(*ast.Ident); ok && ident.Name != "_" {
+			keyName = ident.Name
+		}
+	}
+	if s.Value != nil {
+		if ident, ok := s.Value.(*ast.Ident); ok && ident.Name != "_" {
+			valName = ident.Name
+		}
+	}
+
+	e.addStep(line, "for_init", "for range start")
+
+	maxIterations := 100
+	iteration := 0
+
+	// Helper to run one iteration body
+	runBody := func() {
+		iteration++
+		e.loopIterations[loopID] = iteration
+		e.addStepWithLoop(line, "for_cond", "range iteration", loopID, iteration)
+
+		e.scopeStack = append(e.scopeStack, loopID)
+		if s.Body != nil {
+			e.executeBlock(s.Body.List)
+		}
+		e.scopeStack = e.scopeStack[:len(e.scopeStack)-1]
+	}
+
+	switch c := collection.(type) {
+	case []int:
+		for i, v := range c {
+			if e.hasReturned || iteration >= maxIterations {
+				break
+			}
+			if keyName != "" {
+				e.variables[keyName] = i
+				e.varTypes[keyName] = "int"
+			}
+			if valName != "" {
+				e.variables[valName] = v
+				e.varTypes[valName] = "int"
+			}
+			runBody()
+		}
+	case []string:
+		for i, v := range c {
+			if e.hasReturned || iteration >= maxIterations {
+				break
+			}
+			if keyName != "" {
+				e.variables[keyName] = i
+				e.varTypes[keyName] = "int"
+			}
+			if valName != "" {
+				e.variables[valName] = v
+				e.varTypes[valName] = "string"
+			}
+			runBody()
+		}
+	case []float64:
+		for i, v := range c {
+			if e.hasReturned || iteration >= maxIterations {
+				break
+			}
+			if keyName != "" {
+				e.variables[keyName] = i
+				e.varTypes[keyName] = "int"
+			}
+			if valName != "" {
+				e.variables[valName] = v
+				e.varTypes[valName] = "float64"
+			}
+			runBody()
+		}
+	case map[interface{}]interface{}:
+		for k, v := range c {
+			if e.hasReturned || iteration >= maxIterations {
+				break
+			}
+			if keyName != "" {
+				e.variables[keyName] = k
+				e.varTypes[keyName] = fmt.Sprintf("%T", k)
+			}
+			if valName != "" {
+				e.variables[valName] = v
+				e.varTypes[valName] = fmt.Sprintf("%T", v)
+			}
+			runBody()
+		}
+	}
+}
+
 func (e *simpleExecutor) executeIf(s *ast.IfStmt) {
 	line := e.fset.Position(s.Pos()).Line
 
@@ -242,10 +361,16 @@ func (e *simpleExecutor) executeExpr(s *ast.ExprStmt) {
 	var stepOutput string
 
 	if call, ok := s.X.(*ast.CallExpr); ok {
-		// Check for user-defined function call as statement (e.g., myFunc(x))
 		if ident, ok := call.Fun.(*ast.Ident); ok {
+			// Check for user-defined function call as statement
 			if _, isUserFunc := e.functions[ident.Name]; isUserFunc {
 				e.executeUserFunc(e.functions[ident.Name], call)
+				return
+			}
+			// Handle delete() as statement
+			if ident.Name == "delete" {
+				e.evalCallExpr(call)
+				e.addStep(line, "call", e.getStatementText(s))
 				return
 			}
 		}
@@ -284,14 +409,35 @@ func (e *simpleExecutor) executeExpr(s *ast.ExprStmt) {
 func (e *simpleExecutor) executeIncDec(s *ast.IncDecStmt) {
 	line := e.fset.Position(s.Pos()).Line
 
-	if ident, ok := s.X.(*ast.Ident); ok {
-		if val, ok := e.variables[ident.Name]; ok {
+	switch x := s.X.(type) {
+	case *ast.Ident:
+		// Simple: i++
+		if val, ok := e.variables[x.Name]; ok {
 			if intVal, ok := val.(int); ok {
 				if s.Tok == token.INC {
-					e.variables[ident.Name] = intVal + 1
+					e.variables[x.Name] = intVal + 1
 				} else {
-					e.variables[ident.Name] = intVal - 1
+					e.variables[x.Name] = intVal - 1
 				}
+			}
+		}
+	case *ast.IndexExpr:
+		// Map/slice index: counts[e]++
+		if ident, ok := x.X.(*ast.Ident); ok {
+			if m, ok := e.variables[ident.Name].(map[interface{}]interface{}); ok {
+				key := e.evalExpr(x.Index)
+				current := 0
+				if val, exists := m[key]; exists {
+					if intVal, ok := val.(int); ok {
+						current = intVal
+					}
+				}
+				if s.Tok == token.INC {
+					m[key] = current + 1
+				} else {
+					m[key] = current - 1
+				}
+				e.variables[ident.Name] = m
 			}
 		}
 	}
@@ -360,7 +506,6 @@ func (e *simpleExecutor) evalExpr(expr ast.Expr) interface{} {
 func (e *simpleExecutor) evalCompositeLit(lit *ast.CompositeLit) interface{} {
 	// Check if it's a slice type
 	if arrayType, ok := lit.Type.(*ast.ArrayType); ok {
-		// Check element type
 		if ident, ok := arrayType.Elt.(*ast.Ident); ok {
 			switch ident.Name {
 			case "int":
@@ -393,17 +538,38 @@ func (e *simpleExecutor) evalCompositeLit(lit *ast.CompositeLit) interface{} {
 			}
 		}
 	}
+
+	// Check if it's a map type: map[K]V{...}
+	if _, ok := lit.Type.(*ast.MapType); ok {
+		result := make(map[interface{}]interface{})
+		for _, elt := range lit.Elts {
+			if kv, ok := elt.(*ast.KeyValueExpr); ok {
+				key := e.evalExpr(kv.Key)
+				val := e.evalExpr(kv.Value)
+				result[key] = val
+			}
+		}
+		return result
+	}
+
 	return nil
 }
 
 func (e *simpleExecutor) evalIndexExpr(idx *ast.IndexExpr) interface{} {
-	// Get the array/slice
-	arr := e.evalExpr(idx.X)
-	// Get the index
+	collection := e.evalExpr(idx.X)
 	index := e.evalExpr(idx.Index)
-	
+
+	// Map index: m[key]
+	if m, ok := collection.(map[interface{}]interface{}); ok {
+		if val, exists := m[index]; exists {
+			return val
+		}
+		return 0 // zero value for missing map keys
+	}
+
+	// Slice/array index
 	if indexInt, ok := index.(int); ok {
-		switch a := arr.(type) {
+		switch a := collection.(type) {
 		case []int:
 			if indexInt >= 0 && indexInt < len(a) {
 				return a[indexInt]
@@ -442,8 +608,55 @@ func (e *simpleExecutor) evalCallExpr(call *ast.CallExpr) interface{} {
 					return len(a)
 				case string:
 					return len(a)
+				case map[interface{}]interface{}:
+					return len(a)
 				}
 			}
+		case "make":
+			// make(map[K]V) or make([]T, len)
+			if len(call.Args) > 0 {
+				if _, ok := call.Args[0].(*ast.MapType); ok {
+					return make(map[interface{}]interface{})
+				}
+			}
+		case "append":
+			if len(call.Args) >= 2 {
+				sliceArg := e.evalExpr(call.Args[0])
+				valArg := e.evalExpr(call.Args[1])
+				switch s := sliceArg.(type) {
+				case []int:
+					if v, ok := valArg.(int); ok {
+						return append(s, v)
+					}
+				case []string:
+					if v, ok := valArg.(string); ok {
+						return append(s, v)
+					}
+				case []float64:
+					if v, ok := valArg.(float64); ok {
+						return append(s, v)
+					}
+				case nil:
+					// var simpan []int => nil, then append
+					switch v := valArg.(type) {
+					case int:
+						return []int{v}
+					case string:
+						return []string{v}
+					case float64:
+						return []float64{v}
+					}
+				}
+			}
+		case "delete":
+			if len(call.Args) >= 2 {
+				mapArg := e.evalExpr(call.Args[0])
+				keyArg := e.evalExpr(call.Args[1])
+				if m, ok := mapArg.(map[interface{}]interface{}); ok {
+					delete(m, keyArg)
+				}
+			}
+			return nil
 		}
 	}
 	return nil
@@ -538,12 +751,31 @@ func (e *simpleExecutor) executeUserFunc(fn *ast.FuncDecl, call *ast.CallExpr) i
 	return result
 }
 
+func (e *simpleExecutor) zeroValue(typeName string) interface{} {
+	switch {
+	case strings.HasPrefix(typeName, "[]"):
+		return nil // nil slice
+	case strings.HasPrefix(typeName, "map["):
+		return nil // nil map
+	case typeName == "string":
+		return ""
+	case typeName == "bool":
+		return false
+	case typeName == "float64":
+		return 0.0
+	default:
+		return 0
+	}
+}
+
 func (e *simpleExecutor) getTypeString(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
 		return t.Name
 	case *ast.ArrayType:
 		return "[]" + e.getTypeString(t.Elt)
+	case *ast.MapType:
+		return "map[" + e.getTypeString(t.Key) + "]" + e.getTypeString(t.Value)
 	default:
 		return "auto"
 	}
