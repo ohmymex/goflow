@@ -894,13 +894,36 @@ func (e *simpleExecutor) captureVariables() []tracer.Variable {
 	for name, value := range e.variables {
 		vars = append(vars, tracer.Variable{
 			Name:  name,
-			Type:  e.varTypes[name],
-			Value: value,
+			Type:  cleanTypeName(e.varTypes[name]),
+			Value: toJSONSafe(value),
 			Scope: scope,
 		})
 	}
 
 	return vars
+}
+
+// toJSONSafe converts values that can't be JSON-marshaled (e.g. map[interface{}]interface{})
+// into JSON-safe equivalents (map[string]interface{})
+func toJSONSafe(v interface{}) interface{} {
+	switch val := v.(type) {
+	case map[interface{}]interface{}:
+		safe := make(map[string]interface{}, len(val))
+		for k, v := range val {
+			safe[fmt.Sprintf("%v", k)] = toJSONSafe(v)
+		}
+		return safe
+	default:
+		return v
+	}
+}
+
+// cleanTypeName converts Go internal type names to user-friendly display names
+func cleanTypeName(t string) string {
+	if t == "map[interface {}]interface {}" {
+		return "map"
+	}
+	return t
 }
 
 func (e *simpleExecutor) getStatementText(stmt ast.Stmt) string {
